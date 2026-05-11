@@ -3,6 +3,8 @@
 > Industrial-grade neural network system for predicting vehicle fuel efficiency (MPG).  
 > Stack: Node.js · TensorFlow.js · Express · Chart.js
 
+**🚀 Live Demo:** [https://web-production-2018.up.railway.app](https://web-production-2018.up.railway.app)
+
 ---
 
 ## Project Structure
