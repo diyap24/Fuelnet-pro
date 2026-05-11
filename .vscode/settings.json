@@ -1,0 +1,15 @@
+{
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "files.exclude": {
+    "node_modules": true,
+    "models": false,
+    "logs": false
+  },
+  "terminal.integrated.env.osx":    { "NODE_ENV": "development" },
+  "terminal.integrated.env.linux":  { "NODE_ENV": "development" },
+  "terminal.integrated.env.windows":{ "NODE_ENV": "development" },
+  "jest.autoRun": "off",
+  "eslint.enable": true
+}

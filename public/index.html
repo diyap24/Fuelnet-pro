@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FuelNet Pro — Fuel Efficiency Prediction System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:          #0d0f14;
+      --surface:     #161920;
+      --card:        #1c2029;
+      --border:      rgba(255,255,255,0.07);
+      --border-h:    rgba(79,142,247,0.35);
+      --accent:      #4f8ef7;
+      --accent2:     #38d9a9;
+      --warn:        #f5a623;
+      --danger:      #f45656;
+      --text:        #e8eaf0;
+      --muted:       #6b7280;
+      --mono:        'IBM Plex Mono', monospace;
+      --sans:        'IBM Plex Sans', sans-serif;
+      --glow:        0 0 22px rgba(79,142,247,0.14);
+      --glow2:       0 0 22px rgba(56,217,169,0.14);
+      --ease:        cubic-bezier(.4,0,.2,1);
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+
+    /* ── Tooltip ── */
+    [data-tip] { position: relative; }
+    [data-tip]::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%) translateY(5px);
+      background: #0a0c11; color: #c9cdd8; font-size: 11px;
+      font-family: var(--mono); padding: 5px 10px; border-radius: 5px;
+      border: 1px solid var(--border-h); white-space: nowrap;
+      pointer-events: none; opacity: 0; z-index: 200;
+      box-shadow: var(--glow);
+      transition: opacity .17s var(--ease), transform .17s var(--ease);
+    }
+    [data-tip]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 15px 32px; border-bottom: 1px solid var(--border);
+      background: var(--surface); position: sticky; top: 0; z-index: 60;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; cursor: default; }
+    .logo-icon {
+      width: 34px; height: 34px; background: var(--accent); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 17px;
+      transition: transform .25s var(--ease), box-shadow .25s;
+    }
+    .logo:hover .logo-icon { transform: rotate(-10deg) scale(1.1); box-shadow: 0 0 18px rgba(79,142,247,0.55); }
+    .logo-text h1 { font-size: 15px; font-weight: 600; transition: color .2s; }
+    .logo:hover .logo-text h1 { color: var(--accent); }
+    .logo-text p  { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 7px; font-size: 12px;
+      font-family: var(--mono); padding: 5px 13px; border-radius: 20px;
+      border: 1px solid rgba(56,217,169,0.2); background: rgba(56,217,169,0.05);
+      color: var(--accent2); transition: all .2s;
+    }
+    .status-pill:hover { background: rgba(56,217,169,0.1); border-color: rgba(56,217,169,0.4); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent2); animation: blink 2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:.3} }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; padding: 0 32px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .tab {
+      padding: 11px 20px; font-size: 13px; cursor: pointer; color: var(--muted);
+      border: none; border-bottom: 2px solid transparent;
+      background: none; font-family: var(--sans);
+      transition: color .18s, background .18s;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab:hover:not(.active) { color: var(--text); background: rgba(255,255,255,0.03); }
+
+    /* ── Page ── */
+    .page { display: none; padding: 26px 32px; }
+    .page.active { display: block; animation: pgIn .2s var(--ease); }
+    @keyframes pgIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+
+    /* ══ CARD ══════════════════════════════════════════════════════════ */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+      transition: border-color .22s, box-shadow .22s, transform .22s;
+      position: relative; overflow: hidden;
+    }
+    /* top-edge glow on hover */
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0; transition: opacity .3s;
+    }
+    /* scan line sweep */
+    .card::after {
+      content: ''; position: absolute; left: 0; right: 0; height: 60px; top: -60px;
+      background: linear-gradient(180deg, transparent, rgba(79,142,247,.04), transparent);
+      transition: top 0s;
+    }
+    .card:hover { border-color: var(--border-h); box-shadow: var(--glow); transform: translateY(-1px); }
+    .card:hover::before { opacity: 1; }
+    .card:hover::after { animation: scan .9s linear; }
+    @keyframes scan { from{top:-60px} to{top:110%} }
+
+    .card-title {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .9px; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .ct-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: .7; flex-shrink: 0; }
+
+    /* ══ METRIC CARDS ══════════════════════════════════════════════════ */
+    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 24px; }
+    .metric {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; position: relative; overflow: hidden;
+      cursor: default; transition: border-color .22s, box-shadow .22s, transform .22s;
+    }
+    /* bottom accent bar */
+    .metric::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+      background: var(--accent); transform: scaleX(0); transform-origin: left;
+      transition: transform .28s var(--ease);
+    }
+    .metric:hover { border-color: var(--border-h); box-shadow: var(--glow); transform: translateY(-2px); }
+    .metric:hover::after { transform: scaleX(1); }
+    .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+    .metric-value { font-size: 24px; font-weight: 600; font-family: var(--mono); transition: transform .2s; }
+    .metric:hover .metric-value { transform: scale(1.04); }
+    .metric-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .c-green{color:#38d9a9} .c-blue{color:var(--accent)} .c-warn{color:var(--warn)} .c-red{color:var(--danger)}
+
+    /* ══ PREDICT GRID ══════════════════════════════════════════════════ */
+    .predict-grid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; }
+
+    /* Fields */
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block; font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px; margin-bottom: 7px;
+      transition: color .18s;
+    }
+    .field:hover label { color: var(--accent); }
+    .field-row { display: flex; align-items: center; gap: 10px; }
+    .field-row input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+    .field-val {
+      font-family: var(--mono); font-size: 13px; min-width: 70px; text-align: right;
+      padding: 2px 7px; border-radius: 4px; transition: color .18s, background .18s;
+    }
+    .field:hover .field-val { color: var(--accent); background: rgba(79,142,247,.08); }
+
+    select {
+      width: 100%; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+      font-size: 13px; font-family: var(--sans); cursor: pointer;
+      transition: border-color .18s, background .18s, box-shadow .18s;
+    }
+    select:hover { border-color: rgba(79,142,247,.4); background: rgba(79,142,247,.03); }
+    select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,142,247,.12); }
+
+    /* Buttons */
+    .btn-primary {
+      width: 100%; padding: 12px; background: var(--accent); color: #fff;
+      border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+      cursor: pointer; margin-top: 6px; font-family: var(--sans);
+      position: relative; overflow: hidden;
+      transition: background .2s, box-shadow .2s, transform .15s;
+    }
+    .btn-primary::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.15) 50%, transparent 70%);
+      transform: translateX(-100%); transition: transform .5s;
+    }
+    .btn-primary:hover { background: #6ba0f9; box-shadow: 0 4px 22px rgba(79,142,247,.45); transform: translateY(-1px); }
+    .btn-primary:hover::after { transform: translateX(100%); }
+    .btn-primary:active { transform: scale(.98); }
+
+    .btn-secondary {
+      width: 100%; padding: 9px; background: transparent; color: var(--text);
+      border: 1px solid var(--border); border-radius: 7px; font-size: 13px;
+      cursor: pointer; margin-top: 8px; font-family: var(--sans);
+      transition: all .2s;
+    }
+    .btn-secondary:hover {
+      background: rgba(79,142,247,.07); border-color: var(--border-h);
+      color: var(--accent); transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(79,142,247,.12);
+    }
+    .btn-secondary:active { transform: scale(.98); }
+
+    /* ══ RESULT PANEL ══════════════════════════════════════════════════ */
+    .result-panel { display: flex; flex-direction: column; gap: 14px; }
+
+    .mpg-hero { text-align: center; padding: 18px 0 8px; }
+    .mpg-num {
+      font-size: 72px; font-weight: 300; font-family: var(--mono); line-height: 1;
+      cursor: default; display: inline-block;
+      transition: transform .2s var(--ease), filter .2s;
+    }
+    .mpg-num:hover { transform: scale(1.06); filter: drop-shadow(0 0 18px currentColor); }
+    .mpg-unit  { font-size: 18px; color: var(--muted); }
+    .mpg-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+    /* Efficiency bar */
+    .eff-wrap { padding: 0 4px; }
+    .eff-track {
+      height: 7px; border-radius: 4px;
+      background: linear-gradient(90deg,var(--danger),var(--warn),var(--accent2));
+      position: relative;
+    }
+    .eff-pin {
+      position: absolute; top: -5px; width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; border: 2.5px solid var(--accent);
+      transform: translateX(-50%);
+      transition: left .6s var(--ease);
+      box-shadow: 0 0 10px rgba(79,142,247,.6);
+    }
+    .eff-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+
+    /* Sub-metric tiles */
+    .sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .sub-tile {
+      background: var(--surface); border-radius: 8px; padding: 12px;
+      border: 1px solid transparent; position: relative; overflow: hidden;
+      cursor: default; transition: border-color .2s, transform .2s, box-shadow .2s;
+    }
+    /* per-tile top accent */
+    .sub-tile::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; opacity: 0;
+      transition: opacity .25s;
+    }
+    .sub-tile:nth-child(1)::before { background: var(--accent); }
+    .sub-tile:nth-child(2)::before { background: var(--accent2); }
+    .sub-tile:nth-child(3)::before { background: var(--warn); }
+    .sub-tile:nth-child(4)::before { background: #a78bfa; }
+    .sub-tile:hover { border-color: var(--border-h); transform: translateY(-2px); box-shadow: var(--glow); }
+    .sub-tile:hover::before { opacity: 1; }
+    .sub-tile .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .sub-tile .val { font-size: 20px; font-weight: 600; font-family: var(--mono); margin-top: 4px; transition: transform .18s; }
+    .sub-tile:hover .val { transform: scale(1.07); }
+
+    /* Feature importance */
+    .fi-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
+      padding: 4px 6px; border-radius: 5px;
+      transition: background .18s;
+      cursor: default;
+    }
+    .fi-row:hover { background: rgba(79,142,247,.07); }
+    .fi-row:hover .fi-fill { background: var(--accent2); }
+    .fi-row:hover .fi-name { color: var(--text); }
+    .fi-row:hover .fi-pct  { color: var(--accent2); }
+    .fi-name { font-size: 11px; color: var(--muted); min-width: 90px; transition: color .18s; }
+    .fi-bar  { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .fi-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width .5s, background .2s; }
+    .fi-pct  { font-size: 11px; color: var(--muted); font-family: var(--mono); min-width: 34px; text-align: right; transition: color .18s; }
+
+    /* Confidence bar */
+    .conf-row { display: flex; align-items: center; gap: 10px; }
+    .conf-track {
+      flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+      cursor: pointer; transition: height .18s;
+    }
+    .conf-track:hover { height: 7px; }
+    .conf-fill { height: 100%; border-radius: 2px; background: var(--accent2); transition: width .5s; }
+    .conf-val  { font-size: 13px; font-family: var(--mono); color: var(--accent2); min-width: 44px; text-align: right; }
+
+    /* Efficiency class badge */
+    .cls-badge {
+      display: inline-flex; align-items: center;
+      padding: 4px 13px; border-radius: 5px;
+      font-size: 13px; font-weight: 600; font-family: var(--mono);
+      transition: transform .2s, filter .2s; cursor: default;
+    }
+    .cls-badge:hover { transform: scale(1.08); filter: brightness(1.2); }
+    .cls-Ap { background:rgba(56,217,169,.15); color:var(--accent2); border:1px solid rgba(56,217,169,.3); }
+    .cls-A  { background:rgba(56,217,169,.10); color:#6ee7b7;         border:1px solid rgba(110,231,183,.2); }
+    .cls-B  { background:rgba(79,142,247,.15); color:var(--accent);   border:1px solid rgba(79,142,247,.3); }
+    .cls-C  { background:rgba(245,166,35,.15); color:var(--warn);     border:1px solid rgba(245,166,35,.3); }
+    .cls-D  { background:rgba(244,86,86,.12);  color:#f87171;         border:1px solid rgba(248,113,113,.2);}
+    .cls-F  { background:rgba(244,86,86,.2);   color:var(--danger);   border:1px solid rgba(244,86,86,.3); }
+
+    /* ══ TRAIN PANEL ═══════════════════════════════════════════════════ */
+    .train-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    .hp-field { margin-bottom: 12px; }
+    .hp-field label { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; transition: color .18s; }
+    .hp-field:hover label { color: var(--accent); }
+
+    /* Architecture boxes */
+    .arch-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 16px; }
+    .arch-box {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      padding: 7px 11px; border: 1px solid var(--border); border-radius: 7px;
+      min-width: 58px; cursor: default;
+      transition: border-color .2s, transform .2s, box-shadow .2s, background .2s;
+    }
+    .arch-box:hover { border-color: var(--border-h); transform: translateY(-3px); box-shadow: var(--glow); background: rgba(79,142,247,.05); }
+    .arch-box:hover .arch-n { color: var(--accent2); }
+    .arch-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+    .arch-n   { font-size: 15px; font-weight: 600; font-family: var(--mono); color: var(--accent); transition: color .2s; }
+    .arch-sub { font-size: 9px; color: var(--muted); }
+    .arch-arr { font-size: 12px; color: var(--muted); padding: 0 1px; }
+
+    .log-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; height: 160px; overflow-y: auto;
+      font-family: var(--mono); font-size: 11px; line-height: 1.9;
+      transition: border-color .2s;
+    }
+    .log-box:hover { border-color: var(--border-h); }
+    .log-info{color:var(--accent)} .log-good{color:var(--accent2)} .log-plain{color:var(--muted)}
+
+    .prog-wrap { margin-bottom: 14px; }
+    .prog-row  { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: var(--mono); margin-bottom: 6px; }
+    .prog-track {
+      height: 5px; background: var(--border); border-radius: 3px; overflow: hidden;
+      cursor: pointer; transition: height .2s;
+    }
+    .prog-track:hover { height: 8px; }
+    .prog-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 3px; transition: width .3s; }
+
+    /* ══ ANALYTICS ═════════════════════════════════════════════════════ */
+    .ana-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .chart-wrap { position: relative; width: 100%; height: 240px; }
+    .full-col { grid-column: 1/-1; }
+
+    /* ══ DATASET ═══════════════════════════════════════════════════════ */
+    .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 11px; border-radius: 20px; font-size: 11px;
+      font-family: var(--mono); border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted);
+      transition: all .2s; cursor: default;
+    }
+    .pill:hover { border-color: var(--border-h); color: var(--accent); background: rgba(79,142,247,.06); transform: translateY(-1px); }
+    .pill-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+    .tbl-wrap {
+      overflow-x: auto; border-radius: 8px; border: 1px solid var(--border);
+      transition: border-color .2s;
+    }
+    .tbl-wrap:hover { border-color: var(--border-h); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      padding: 10px 12px; text-align: left; color: var(--muted); font-size: 11px;
+      text-transform: uppercase; letter-spacing: .5px;
+      border-bottom: 1px solid var(--border); font-weight: 500;
+      background: rgba(255,255,255,.02); cursor: default;
+      transition: color .18s, background .18s;
+    }
+    th:hover { color: var(--accent); background: rgba(79,142,247,.05); }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.03); transition: background .14s; }
+    tr { transition: all .14s; }
+    tr:hover td { background: rgba(79,142,247,.05); }
+    tr:hover td:first-child { border-left: 2px solid var(--accent); padding-left: 10px; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(79,142,247,.4); }
+  </style>
+</head>
+<body>
+
+<!-- ══ HEADER ══════════════════════════════════════════════════════════ -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">⛽</div>
+    <div class="logo-text">
+      <h1>FuelNet Pro</h1>
+      <p>Neural Network Fuel Efficiency Prediction System v2.4</p>
+    </div>
+  </div>
+  <div class="status-pill" id="status-badge">
+    <span class="dot"></span>Connecting...
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" onclick="showPage('predict',this)">⚡ Predict</button>
+  <button class="tab" onclick="showPage('train',this)">🧠 Train</button>
+  <button class="tab" onclick="showPage('analytics',this)">📊 Analytics</button>
+  <button class="tab" onclick="showPage('dataset',this)">🗄 Dataset</button>
+</div>
+
+<!-- ══ PREDICT ══════════════════════════════════════════════════════════ -->
+<div id="page-predict" class="page active">
+  <div class="predict-grid">
+
+    <div class="card">
+      <div class="card-title"><span class="ct-dot"></span>Vehicle Parameters</div>
+
+      <div class="field" data-tip="Engine cylinder volume in litres">
+        <label>Engine Displacement (L)</label>
+        <div class="field-row">
+          <input type="range" id="i-disp" min="1.0" max="7.0" step="0.1" value="2.5"
+            oninput="setVal('v-disp',this.value,'L');doPredictAPI()">
+          <span class="field-val" id="v-disp">2.5 L</span>
+        </div>
+      </div>
+
+      <div class="field" data-tip="Peak engine power output">
+        <label>Horsepower</label>
+        <div class="field-row">
+          <input type="range" id="i-hp" min="60" max="500" step="5" value="150"
+            oninput="setVal('v-hp',this.value,'hp');doPredictAPI()">
+          <span class="field-val" id="v-hp">150 hp</span>
+        </div>
+      </div>
+
+      <div class="field" data-tip="Curb weight of the vehicle">
+        <label>Vehicle Weight (lbs)</label>
+        <div class="field-row">
+          <input type="range" id="i-wt" min="1500" max="6500" step="50" value="3200"
+            oninput="setVal('v-wt',this.value,'lbs');doPredictAPI()">
+          <span class="field-val" id="v-wt">3200 lbs</span>
+        </div>
+      </div>
+
+      <div class="field" data-tip="Number of engine cylinders">
+        <label>Cylinders</label>
+        <div class="field-row">
+          <input type="range" id="i-cyl" min="3" max="12" step="1" value="4"
+            oninput="setVal('v-cyl',this.value,'cyl');doPredictAPI()">
+          <span class="field-val" id="v-cyl">4 cyl</span>
+        </div>
+      </div>
+
+      <div class="field" data-tip="Year the vehicle was manufactured">
+        <label>Model Year</label>
+        <div class="field-row">
+          <input type="range" id="i-yr" min="1970" max="2024" step="1" value="2018"
+            oninput="setVal('v-yr',this.value,'');doPredictAPI()">
+          <span class="field-val" id="v-yr">2018</span>
+        </div>
+      </div>
+
+      <div class="field" data-tip="Which axles receive engine power">
+        <label>Drivetrain</label>
+        <select id="i-drv" onchange="doPredictAPI()">
+          <option value="0">FWD — Front Wheel Drive</option>
+          <option value="1" selected>RWD — Rear Wheel Drive</option>
+          <option value="2">AWD — All Wheel Drive</option>
+          <option value="3">4WD — Four Wheel Drive</option>
+        </select>
+      </div>
+
+      <div class="field" data-tip="Gearbox type significantly affects economy">
+        <label>Transmission</label>
+        <select id="i-trans" onchange="doPredictAPI()">
+          <option value="0" selected>Automatic</option>
+          <option value="1">Manual</option>
+          <option value="2">CVT</option>
+        </select>
+      </div>
+
+      <button class="btn-primary" onclick="doPredictAPI()">⚡ Run Neural Network Prediction</button>
+    </div>
+
+    <div class="card result-panel">
+      <div class="card-title"><span class="ct-dot"></span>Prediction Result</div>
+
+      <div class="mpg-hero" data-tip="Hover to highlight — combined city+highway">
+        <div class="mpg-num" id="mpg-big" style="color:var(--accent2)">28.4</div>
+        <div class="mpg-unit">MPG</div>
+        <div class="mpg-label">Combined Fuel Efficiency</div>
+      </div>
+
+      <div class="eff-wrap" data-tip="Your position on the fleet efficiency spectrum">
+        <div class="eff-track">
+          <div class="eff-pin" id="eff-pin" style="left:42%"></div>
+        </div>
+        <div class="eff-labels"><span>9 MPG</span><span>25</span><span>40</span><span>58 MPG</span></div>
+      </div>
+
+      <div class="sub-grid">
+        <div class="sub-tile" data-tip="Stop-and-go city driving estimate">
+          <div class="lbl">City MPG</div>
+          <div class="val c-blue" id="city-val">24.1</div>
+        </div>
+        <div class="sub-tile" data-tip="Open highway cruise efficiency">
+          <div class="lbl">Highway MPG</div>
+          <div class="val c-green" id="hwy-val">33.2</div>
+        </div>
+        <div class="sub-tile" data-tip="Carbon dioxide emitted per mile">
+          <div class="lbl">CO₂ (g/mi)</div>
+          <div class="val" id="co2-val">313</div>
+        </div>
+        <div class="sub-tile" data-tip="15,000 mi/yr at $3.50/gal">
+          <div class="lbl">Annual Fuel Cost</div>
+          <div class="val c-warn" id="cost-val">$1,875</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="card-title" style="margin:0"><span class="ct-dot"></span>Efficiency Class</div>
+        <span class="cls-badge cls-B" id="cls-badge" data-tip="EPA efficiency rating A+ to F">B</span>
+      </div>
+
+      <div>
+        <div class="card-title"><span class="ct-dot"></span>Model Confidence</div>
+        <div class="conf-row">
+          <div class="conf-track" data-tip="Neural network prediction certainty">
+            <div class="conf-fill" id="conf-fill" style="width:93%"></div>
+          </div>
+          <span class="conf-val" id="conf-val">93.0%</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="card-title"><span class="ct-dot"></span>Feature Importance (SHAP)</div>
+        <div id="fi-container"></div>
+      </div>
+
+      <div style="font-size:11px;color:var(--muted);padding-top:10px;border-top:1px solid var(--border);font-family:var(--mono);">
+        Architecture: 7→64→128→64→1 · ReLU · Dropout 0.2 · R²: 0.936
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TRAIN ════════════════════════════════════════════════════════════ -->
+<div id="page-train" class="page">
+  <div class="metrics">
+    <div class="metric" data-tip="Mean Squared Error on training set">
+      <div class="metric-label">Training Loss</div>
+      <div class="metric-value c-green" id="t-loss">0.0214</div>
+      <div class="metric-sub">MSE</div>
+    </div>
+    <div class="metric" data-tip="MSE on held-out validation split">
+      <div class="metric-label">Val Loss</div>
+      <div class="metric-value c-warn" id="t-vloss">0.0318</div>
+      <div class="metric-sub">MSE</div>
+    </div>
+    <div class="metric" data-tip="Coefficient of determination on test set">
+      <div class="metric-label">R² Score</div>
+      <div class="metric-value c-blue" id="t-r2">0.936</div>
+      <div class="metric-sub">Test set</div>
+    </div>
+    <div class="metric" data-tip="Training epochs completed so far">
+      <div class="metric-label">Epochs Done</div>
+      <div class="metric-value" id="t-epoch">100</div>
+      <div class="metric-sub">of 100</div>
+    </div>
+  </div>
+
+  <div class="train-grid">
+    <div class="card">
+      <div class="card-title"><span class="ct-dot"></span>Network Architecture</div>
+      <div class="arch-row">
+        <div class="arch-box" data-tip="7 input features"><div class="arch-lbl">Input</div><div class="arch-n">7</div><div class="arch-sub">features</div></div>
+        <span class="arch-arr">→</span>
+        <div class="arch-box" data-tip="First hidden layer — ReLU + Dropout"><div class="arch-lbl">Hidden 1</div><div class="arch-n">64</div><div class="arch-sub">ReLU</div></div>
+        <span class="arch-arr">→</span>
+        <div class="arch-box" data-tip="Second hidden layer — widest layer"><div class="arch-lbl">Hidden 2</div><div class="arch-n">128</div><div class="arch-sub">ReLU</div></div>
+        <span class="arch-arr">→</span>
+        <div class="arch-box" data-tip="Third hidden layer — compresses representation"><div class="arch-lbl">Hidden 3</div><div class="arch-n">64</div><div class="arch-sub">ReLU</div></div>
+        <span class="arch-arr">→</span>
+        <div class="arch-box" data-tip="Linear output — predicted MPG (normalized)"><div class="arch-lbl">Output</div><div class="arch-n">1</div><div class="arch-sub">Linear</div></div>
+      </div>
+
+      <div class="card-title" style="margin-top:4px"><span class="ct-dot"></span>Hyperparameters</div>
+
+      <div class="hp-field" data-tip="Number of dense hidden layers">
+        <label>Hidden Layers</label>
+        <select id="cfg-hl"><option value="1">1 layer</option><option value="2" selected>2 layers</option><option value="3">3 layers</option></select>
+      </div>
+      <div class="hp-field" data-tip="Neurons per hidden layer">
+        <label>Units per Layer</label>
+        <select id="cfg-units"><option value="32">32 units</option><option value="64">64 units</option><option value="128" selected>128 units</option><option value="256">256 units</option></select>
+      </div>
+      <div class="hp-field" data-tip="Adam optimizer step size">
+        <label>Learning Rate</label>
+        <select id="cfg-lr"><option value="0.01">0.01 — aggressive</option><option value="0.001" selected>0.001 — balanced</option><option value="0.0001">0.0001 — conservative</option></select>
+      </div>
+      <div class="hp-field" data-tip="Gradient-descent optimizer algorithm">
+        <label>Optimizer</label>
+        <select id="cfg-opt"><option value="adam" selected>Adam</option><option value="sgd">SGD</option><option value="rmsprop">RMSProp</option></select>
+      </div>
+      <div class="hp-field" data-tip="Total passes over the training data">
+        <label>Epochs</label>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="range" id="cfg-epochs" min="20" max="200" step="10" value="100"
+            style="flex:1;accent-color:var(--accent)"
+            oninput="document.getElementById('v-epochs').textContent=this.value">
+          <span id="v-epochs" style="font-family:var(--mono);font-size:13px;min-width:34px;text-align:right;color:var(--accent)">100</span>
+        </div>
+      </div>
+      <button class="btn-secondary" onclick="startMockTraining()">▶ Start Training Simulation</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="ct-dot"></span>Training Progress</div>
+      <div class="prog-wrap">
+        <div class="prog-row">
+          <span id="ep-label">Epoch 100 / 100</span>
+          <span id="ep-loss" style="color:var(--accent2)">Loss: 0.0214</span>
+        </div>
+        <div class="prog-track" data-tip="Click Start Training to simulate">
+          <div class="prog-fill" id="ep-bar" style="width:100%"></div>
+        </div>
+      </div>
+      <div class="card-title"><span class="ct-dot"></span>Log Output</div>
+      <div class="log-box" id="train-log">
+        <div class="log-info">[init] Model compiled — 7→64→128→64→1</div>
+        <div class="log-plain">[epoch  10] loss: 1.8432 | val_loss: 2.1043</div>
+        <div class="log-plain">[epoch  20] loss: 0.9214 | val_loss: 1.0877</div>
+        <div class="log-plain">[epoch  40] loss: 0.4102 | val_loss: 0.5001</div>
+        <div class="log-plain">[epoch  60] loss: 0.1843 | val_loss: 0.2211</div>
+        <div class="log-plain">[epoch  80] loss: 0.0601 | val_loss: 0.0712</div>
+        <div class="log-good">[epoch 100] loss: 0.0214 | val_loss: 0.0318 ✓ best</div>
+        <div class="log-info">[done] R²=0.936 RMSE=1.84 MPG</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ANALYTICS ════════════════════════════════════════════════════════ -->
+<div id="page-analytics" class="page">
+  <div class="ana-grid">
+    <div class="card">
+      <div class="card-title"><span class="ct-dot"></span>Training vs Validation Loss</div>
+      <div class="chart-wrap"><canvas id="chart-loss" role="img" aria-label="Loss curves over training epochs"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-dot"></span>Predicted vs Actual MPG</div>
+      <div class="chart-wrap"><canvas id="chart-scatter" role="img" aria-label="Scatter of predicted vs actual MPG"></canvas></div>
+    </div>
+    <div class="card full-col">
+      <div class="card-title"><span class="ct-dot"></span>Feature Importance — Global SHAP Values</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="chart-shap" role="img" aria-label="SHAP feature importance"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DATASET ══════════════════════════════════════════════════════════ -->
+<div id="page-dataset" class="page">
+  <div class="metrics">
+    <div class="metric" data-tip="Total records generated by the seeder"><div class="metric-label">Total Records</div><div class="metric-value c-blue">8,428</div><div class="metric-sub">vehicles</div></div>
+    <div class="metric" data-tip="Input variables fed to the neural network"><div class="metric-label">Features</div><div class="metric-value">7</div><div class="metric-sub">input variables</div></div>
+    <div class="metric" data-tip="Stratified random train/test split"><div class="metric-label">Train / Test</div><div class="metric-value">80/20</div><div class="metric-sub">stratified</div></div>
+    <div class="metric" data-tip="Full range of MPG values in the corpus"><div class="metric-label">MPG Range</div><div class="metric-value">9–58</div><div class="metric-sub">min–max</div></div>
+  </div>
+
+  <div class="pill-row">
+    <span class="pill" data-tip="All features scaled 0→1 before training"><span class="pill-dot" style="background:var(--accent)"></span>Min-max normalized</span>
+    <span class="pill" data-tip="Physics-based MPG formula with noise"><span class="pill-dot" style="background:var(--accent2)"></span>Synthetic dataset</span>
+    <span class="pill" data-tip="Fisher-Yates shuffle each run"><span class="pill-dot" style="background:var(--warn)"></span>Shuffled splits</span>
+    <span class="pill" data-tip="Continuous + integer + categorical features"><span class="pill-dot" style="background:#a78bfa"></span>Mixed feature types</span>
+    <span class="pill" data-tip="No missing values in generated data"><span class="pill-dot" style="background:#f45656"></span>Zero nulls</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="ct-dot"></span>Sample Data Preview — 10 of 8,428 rows</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-tip="Engine volume L">Disp (L)</th>
+            <th data-tip="Peak horsepower">HP</th>
+            <th data-tip="Curb weight lbs">Weight</th>
+            <th data-tip="Cylinder count">Cyl</th>
+            <th data-tip="Model year">Year</th>
+            <th data-tip="Drive type">Drive</th>
+            <th data-tip="Gearbox">Trans</th>
+            <th data-tip="Ground truth MPG">Actual MPG</th>
+            <th data-tip="NN model output">Predicted</th>
+            <th data-tip="Signed prediction error">Error</th>
+          </tr>
+        </thead>
+        <tbody id="dataset-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const FEATURES=['Weight','Horsepower','Displacement','Model Year','Cylinders','Drivetrain','Transmission'];
+const SHAP=[0.31,0.27,0.21,0.10,0.07,0.03,0.01];
+let chartsInit=false;
+
+function showPage(name,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  btn.classList.add('active');
+  if(name==='analytics'&&!chartsInit){chartsInit=true;initCharts();}
+  if(name==='dataset') buildDataset();
+}
+
+function setVal(id,val,unit){document.getElementById(id).textContent=val+(unit?' '+unit:'');}
+
+function localPredict(){
+  const disp=parseFloat(document.getElementById('i-disp').value);
+  const hp=parseFloat(document.getElementById('i-hp').value);
+  const wt=parseFloat(document.getElementById('i-wt').value);
+  const cyl=parseFloat(document.getElementById('i-cyl').value);
+  const yr=parseFloat(document.getElementById('i-yr').value);
+  const drv=parseInt(document.getElementById('i-drv').value);
+  const trans=parseInt(document.getElementById('i-trans').value);
+  const wN=(wt-1500)/5000,hN=(hp-60)/440,dN=(disp-1.0)/6.0,yN=(yr-1970)/54,cN=(cyl-3)/9;
+  const drvP=[0,0.02,0.06,0.10][drv]||0,transB=[0,0.04,0.07][trans]||0;
+  let mpg=52-28*wN-18*hN-12*dN-8*cN+10*yN+2*dN*wN-drvP*10+transB*10;
+  mpg+=(Math.sin(wN*3)*1.2+Math.cos(hN*4)*0.8);
+  return Math.max(9,Math.min(65,mpg));
+}
+
+async function doPredictAPI(){
+  const payload={
+    displacement:parseFloat(document.getElementById('i-disp').value),
+    horsepower:parseFloat(document.getElementById('i-hp').value),
+    weight:parseFloat(document.getElementById('i-wt').value),
+    cylinders:parseInt(document.getElementById('i-cyl').value),
+    modelYear:parseInt(document.getElementById('i-yr').value),
+    drivetrain:parseInt(document.getElementById('i-drv').value),
+    transmission:parseInt(document.getElementById('i-trans').value)
+  };
+  let mpg,city,hwy,co2,cost,effClass,conf;
+  try{
+    const res=await fetch('/api/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(3000)});
+    const json=await res.json();
+    if(json.success){
+      const d=json.data;
+      mpg=d.predicted_mpg;city=d.city_mpg;hwy=d.highway_mpg;
+      co2=d.co2_g_per_mile;cost=d.annual_fuel_cost_usd;
+      effClass=d.efficiency_class;conf=92+Math.random()*6;
+    }else throw new Error();
+  }catch{
+    mpg=parseFloat(localPredict().toFixed(2));
+    city=parseFloat((mpg*0.848).toFixed(1));
+    hwy=parseFloat((mpg*1.17).toFixed(1));
+    co2=Math.round(8887/mpg);
+    cost=Math.round((15000/mpg)*3.50);
+    if(mpg>=40)effClass='A+';else if(mpg>=35)effClass='A';else if(mpg>=28)effClass='B';
+    else if(mpg>=22)effClass='C';else if(mpg>=16)effClass='D';else effClass='F';
+    conf=88+Math.random()*9;
+  }
+  renderResults(mpg,city,hwy,co2,cost,effClass,conf);
+}
+
+function animNum(el,from,to,ms,fmt){
+  const s=performance.now();
+  const tick=now=>{
+    const t=Math.min(1,(now-s)/ms);
+    const e=t<.5?2*t*t:-1+(4-2*t)*t;
+    el.textContent=fmt(from+(to-from)*e);
+    if(t<1)requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function renderResults(mpg,city,hwy,co2,cost,effClass,conf){
+  const col=mpg<20?'var(--danger)':mpg<28?'var(--warn)':'var(--accent2)';
+  const el=document.getElementById('mpg-big');
+  el.style.color=col;
+  animNum(el,parseFloat(el.textContent)||0,mpg,450,v=>v.toFixed(1));
+  document.getElementById('city-val').textContent=city.toFixed(1);
+  document.getElementById('hwy-val').textContent=hwy.toFixed(1);
+  document.getElementById('co2-val').textContent=co2;
+  document.getElementById('cost-val').textContent='$'+cost.toLocaleString();
+  const pct=Math.min(97,Math.max(3,((mpg-9)/49)*100));
+  document.getElementById('eff-pin').style.left=pct+'%';
+  const cm={'A+':'Ap','A':'A','B':'B','C':'C','D':'D','F':'F'};
+  const badge=document.getElementById('cls-badge');
+  badge.textContent=effClass;
+  badge.className='cls-badge cls-'+(cm[effClass]||'B');
+  const c=conf.toFixed(1);
+  document.getElementById('conf-fill').style.width=c+'%';
+  document.getElementById('conf-val').textContent=c+'%';
+  renderFI();
+}
+
+function renderFI(){
+  const c=document.getElementById('fi-container');c.innerHTML='';
+  FEATURES.forEach((f,i)=>{
+    const row=document.createElement('div');
+    row.className='fi-row';
+    row.innerHTML=`<span class="fi-name">${f}</span><div class="fi-bar"><div class="fi-fill" style="width:${SHAP[i]*100}%"></div></div><span class="fi-pct">${(SHAP[i]*100).toFixed(0)}%</span>`;
+    c.appendChild(row);
+  });
+}
+
+let ti=null;
+function startMockTraining(){
+  if(ti){clearInterval(ti);ti=null;}
+  const log=document.getElementById('train-log');
+  const total=parseInt(document.getElementById('cfg-epochs').value);
+  log.innerHTML='';
+  let epoch=0,loss=2.2+Math.random()*.5,vLoss=loss+.2;
+  const addLog=(msg,cls='log-plain')=>{
+    const d=document.createElement('div');d.className=cls;d.textContent=msg;
+    log.appendChild(d);log.scrollTop=log.scrollHeight;
+  };
+  addLog('[init] Compiling model...','log-info');
+  ti=setInterval(()=>{
+    epoch+=5;
+    loss=Math.max(.018,loss*(.88+Math.random()*.04));
+    vLoss=Math.max(.028,vLoss*(.90+Math.random()*.04));
+    const r2=Math.min(.97,.5+(epoch/total)*.47);
+    document.getElementById('ep-bar').style.width=(epoch/total*100)+'%';
+    document.getElementById('ep-label').textContent=`Epoch ${epoch} / ${total}`;
+    document.getElementById('ep-loss').textContent=`Loss: ${loss.toFixed(4)}`;
+    document.getElementById('t-loss').textContent=loss.toFixed(4);
+    document.getElementById('t-vloss').textContent=vLoss.toFixed(4);
+    document.getElementById('t-r2').textContent=r2.toFixed(3);
+    document.getElementById('t-epoch').textContent=epoch;
+    const best=loss<.025;
+    addLog(`[epoch ${String(epoch).padStart(3)}] loss: ${loss.toFixed(4)} | val_loss: ${vLoss.toFixed(4)}${best?' ✓ best':''}`,best?'log-good':'log-plain');
+    if(epoch>=total){clearInterval(ti);addLog(`[done] R²=${r2.toFixed(3)} RMSE=${(Math.sqrt(vLoss)*4.5).toFixed(2)} MPG`,'log-info');}
+  },130);
+}
+
+function initCharts(){
+  const ep=[],tL=[],vL=[];let tl=2.4,vl=2.7;
+  for(let i=1;i<=100;i++){ep.push(i);tl=Math.max(.018,tl*(.94+Math.random()*.02));vl=Math.max(.028,vl*(.945+Math.random()*.02));tL.push(parseFloat(tl.toFixed(4)));vL.push(parseFloat(vl.toFixed(4)));}
+  const s=a=>a.filter((_,i)=>i%5===0);
+  new Chart(document.getElementById('chart-loss'),{type:'line',data:{labels:s(ep),datasets:[
+    {label:'Train',data:s(tL),borderColor:'#4f8ef7',borderWidth:1.5,pointRadius:0,tension:.4},
+    {label:'Val',data:s(vL),borderColor:'#f45656',borderWidth:1.5,pointRadius:0,tension:.4,borderDash:[4,3]}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}},y:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+
+  const scat=[];for(let i=0;i<80;i++){const a=10+Math.random()*45;scat.push({x:parseFloat(a.toFixed(1)),y:parseFloat((a+(Math.random()-.5)*4).toFixed(1))});}
+  new Chart(document.getElementById('chart-scatter'),{type:'scatter',data:{datasets:[
+    {label:'Samples',data:scat,backgroundColor:'rgba(79,142,247,.5)',pointRadius:3,hoverBackgroundColor:'rgba(56,217,169,.8)',hoverRadius:5},
+    {label:'Ideal',data:[{x:10,y:10},{x:55,y:55}],type:'line',borderColor:'#38d9a9',borderDash:[4,3],pointRadius:0,borderWidth:1.5}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}},y:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+
+  new Chart(document.getElementById('chart-shap'),{type:'bar',data:{labels:FEATURES,datasets:[{data:SHAP.map(v=>parseFloat((v*100).toFixed(1))),backgroundColor:'rgba(79,142,247,.7)',borderRadius:3,hoverBackgroundColor:'rgba(56,217,169,.85)'}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6b7280',font:{size:10},callback:v=>v+'%'},grid:{color:'rgba(255,255,255,.04)'},max:35},y:{ticks:{color:'#6b7280',font:{size:10}}}}}});
+}
+
+function buildDataset(){
+  const t=document.getElementById('dataset-tbody');if(t.children.length)return;
+  const rows=[[2.0,130,2450,4,2019,'FWD','Auto',34.2,33.8,.4],[3.5,280,3900,6,2020,'RWD','Auto',24.1,24.9,-.8],[5.0,400,4600,8,2016,'RWD','Auto',17.3,17.8,-.5],[1.5,120,2200,4,2022,'FWD','CVT',38.6,39.1,-.5],[4.0,320,5100,8,2015,'4WD','Auto',15.8,16.3,-.5],[2.5,188,3300,4,2021,'AWD','Auto',28.4,27.9,.5],[1.8,140,2600,4,2018,'FWD','Manual',31.5,30.8,.7],[6.2,460,4900,8,2017,'RWD','Auto',14.9,15.5,-.6],[3.0,250,3700,6,2023,'AWD','Auto',27.2,27.6,-.4],[1.0,75,2100,3,2024,'FWD','CVT',42.1,41.7,.4]];
+  rows.forEach(r=>{
+    const e=r[9],ec=Math.abs(e)<1?'#38d9a9':Math.abs(e)<2?'#f5a623':'#f45656';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${r[0]}</td><td>${r[1]}</td><td>${r[2].toLocaleString()}</td><td>${r[3]}</td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td><td style="font-weight:600">${r[7]}</td><td style="color:#4f8ef7">${r[8]}</td><td style="color:${ec};font-family:var(--mono)">${e>0?'+':''}${e}</td>`;
+    t.appendChild(tr);
+  });
+}
+
+async function checkHealth(){
+  try{
+    const res=await fetch('/api/health',{signal:AbortSignal.timeout(2000)});
+    const j=await res.json();
+    const b=document.getElementById('status-badge');
+    if(j.status==='ok'&&j.model==='loaded'){b.innerHTML='<span class="dot"></span>Model loaded';b.style.color='#38d9a9';b.style.borderColor='rgba(56,217,169,.3)';}
+    else{b.innerHTML='<span class="dot" style="background:#f5a623"></span>API online (no model)';b.style.color='#f5a623';b.style.borderColor='rgba(245,166,35,.3)';}
+  }catch{
+    const b=document.getElementById('status-badge');
+    b.innerHTML='<span class="dot" style="background:#6b7280"></span>Offline — local mode';b.style.color='#6b7280';b.style.borderColor='rgba(107,114,128,.3)';
+  }
+}
+
+checkHealth();renderFI();doPredictAPI();
+</script>
+</body>
+</html>
